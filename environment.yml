@@ -1,0 +1,10 @@
+name: local_gan
+dependencies:
+  - python=3.10
+  - pytorch
+  - numpy
+  - pandas
+  - scikit-learn
+  - statsmodels
+  - pip:
+    - tensorboard
