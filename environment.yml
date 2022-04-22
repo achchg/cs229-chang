@@ -1,11 +1,17 @@
 name: local_gan
 channels:
-dependencies:
-  - python=3.10
+  - defaults
   - pytorch
+dependencies:
+  - python=3.8
+  - pytorch
+  - torchvision
   - numpy
   - pandas
-  - scikit-learn
-  - statsmodels
+  - poetry
+  - ipykernel
+  - pip
   - pip:
+    - sentencepiece
+    - sacrebleu
     - tensorboard
