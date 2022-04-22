@@ -1,4 +1,5 @@
 name: local_gan
+channels:
 dependencies:
   - python=3.10
   - pytorch
