@@ -197,7 +197,12 @@ def plot1(ds1_size, ds3_size, std_list, mnist_train, item, batch_size):
     
     
 def just_plot1(plot1):
-    '''data saved, inference plotting'''
+    """data saved, row-stacking true label + logistic regression plotted
+
+    Args:
+        plot1 (pd.DataFrame): inference data prepared for plotting
+    """
+    ''''''
     fig,ax = plt.subplots(figsize=(10,3.5))
     custom_cycler = (cycler(color=['#0c4bbc', '#ff8800', '#61a712']) +
                      cycler(lw=[2, 2, 2]) +
