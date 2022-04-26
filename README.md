@@ -1,11 +1,15 @@
 # Centralizing Real World Data with Machines
 
-Welcome to this site! This was originally a course project from CS-229 Fall 2021. I tried to document it here for learning and sharing.
+This was originally a course project of mine from CS-229 Fall 2021. As there were advanced goals I'd love to explore, continuing them here as research blogs.
 
-If you're interested in exploring/reproducing my research project. Please follow the steps in setting up a conda environment.
+Notes for the future self or people that find this project interesting:
 
-````
-conda env create
-conda activate local_gan
-````
+- Minimum evironmental pre-requisites are in `environmenta.yml`.
+- Conda environment setup:
 
+    ````
+    conda env create
+    conda activate local_gan
+    ````
+- Setup a ipykernel ` python -m ipykernel install --user --name local_gan`
+- 

@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "data_gan"
+version = "0.1.0"
+description = "Centralizing real world data with machines"
+authors = ["Chi-Hsuan Chang"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.22.3"
+pandas = "^1.4.2"
+torchvision = "^0.12.0"
+torch = {version = "^1.11.0", python = "^3.10", platform = "linux"}
+ipykernel = "^6.13.0"
+matplotlib = "^3.5.1"
+scikit-learn = "^1.0.2"
+statsmodels = "^0.13.2"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
