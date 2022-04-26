@@ -16,7 +16,7 @@ import torch
 
 import sys  
 sys.path.insert(0, '../../')
-from utils import *
+from utils.preprocessing import *
 
 
 parser = argparse.ArgumentParser()
