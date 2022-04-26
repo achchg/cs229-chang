@@ -83,7 +83,7 @@ obs_data = obs_data.set_index('item')
 
 
 # row-stacking 
-# plot1(0.5, 0.5, std_list, mnist_train, item, batch_size)
+plot1(0.5, 0.5, std_list, mnist_train, item, batch_size)
 
 # weighted-row-stacking
 plot2(0.5, 0.5, std_list, mnist_train, item, batch_size)

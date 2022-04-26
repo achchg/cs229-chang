@@ -91,7 +91,17 @@ def rowStackingModel_inference(obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_l
 
 
 def plot1(ds1_size, ds3_size, std_list, mnist_train, item, batch_size):
-    '''plot row-stacking true label + logistic regression inference'''
+    """plot row-stacking true label + logistic regression inference
+
+    Args:
+        ds1_size (float): Distribution of dataset 1 in data mixture
+        ds3_size (float): Distribution of dataset 3 in data mixture
+        std_list (list): Standard deviations of dataset 1, 2, and 3
+        mnist_train (list): Training data loaded from Mnist
+        item (dict(list)): Labels and categories of dataset
+        batch_size (int): Batch size
+    """
+    ''''''
     true_target_obs_bias_list = []
     true_target_nonobs_bias_list = [] 
     r_true_target_obs_bias_list = []
