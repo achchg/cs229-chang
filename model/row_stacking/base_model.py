@@ -1,52 +1,22 @@
-import torch
 import torchvision.datasets as datasets
-from torch.autograd import Variable
-
-import torch.nn as nn
-import torch.nn.functional as F
-
-import torch.optim as optim
-
-import torchvision
 import torchvision.transforms as transforms
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import pandas as pd
-
-from sklearn.linear_model import LinearRegression
-from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, MaxAbsScaler, OneHotEncoder
-
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
-from statsmodels.genmod.bayes_mixed_glm import BinomialBayesMixedGLM as mixedglm
-
-
-import os
-os.chdir('../')
-
-import sys  
-sys.path.insert(0, '../../')
-from utils import *
-from inference import *
+from utils.preprocessing import *
+from utils.inference import *
 
 transform = transforms.Compose(
     [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
 )
 
 # load the training data
-mnist_train = datasets.FashionMNIST('../data', train=True, download=True,
+mnist_train = datasets.FashionMNIST('data', train=True, download=True,
                                     transform = transform)
 
-mnist_test = datasets.FashionMNIST('../data', train=False, download=True,
+mnist_test = datasets.FashionMNIST('data', train=False, download=True,
                                     transform = transform)
 
 mnist_train = list(mnist_train)
 mnist_test = list(mnist_test)
-
+print('preprocessing done!')
 item = {
     0: ['T-shirt', 'Top'],
     1: ['Trouser', 'Bottom'],
@@ -96,7 +66,6 @@ category_wt3 = {
 
 category_wt = [category_wt1, category_wt2, category_wt3]
 
-
 (obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list, rest_X_list, rest_y_list) = generate_data_mixture_base(0, mnist_train, 
                                                        test_size, 
                                                        std_list, 
@@ -114,7 +83,7 @@ obs_data = obs_data.set_index('item')
 
 
 # row-stacking 
-plot1(0.5, 0.5, std_list)
+# plot1(0.5, 0.5, std_list, mnist_train, item, batch_size)
 
 # weighted-row-stacking
-plot2(0.5, 0.5, std_list)
+plot2(0.5, 0.5, std_list, mnist_train, item, batch_size)
