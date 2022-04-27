@@ -153,6 +153,7 @@ dmypy.json
 cython_debug/
 
 # Project specifics
+.DS_Store
 data/
 notebook/.ipynb_checkpoints/
 row_stacking/results/
