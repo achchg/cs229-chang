@@ -12,4 +12,4 @@ Notes for the future self or people that find this project interesting:
     conda activate local_gan
     ````
 - Setup a ipykernel ` python -m ipykernel install --user --name local_gan`
-- 
+  
