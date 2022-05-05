@@ -158,6 +158,7 @@ data/
 notebook/.ipynb_checkpoints/
 row_stacking/results/
 sgan/results/
+notebook/runs/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
