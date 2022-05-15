@@ -4,82 +4,177 @@ import numpy as np
 import pandas as pd
 
 
+class DataPreprocessing():
+    """data preprocessing to generate data mixture
+    """
+    def __init__(self, mnist_train, ds_size_list, std_list, mean_list, category_wt, item):
+        """_summary_
 
-def add_random_noise(torch_tensor, std):
-    '''add gaussian noise to original data sample as sample batch effect
-    '''
-    torch_tensor1 = torch.clone(torch_tensor)
-    sampled_noise = torch.randn(torch_tensor1.shape)
-    torch_tensor1 += std*sampled_noise
-    return torch_tensor1
+        Args:
+            mnist_train (list): training data input from torchvision.datasets
+            ds_size_list (list): list of size to show data mixture distribution
+            std_list (list): list of std to show variation exists in data mixture
+            mean_list (list): list of mean to center of datasets in data mixture
+            category_wt (_type_): _description_
+            item (_type_): _description_
+        """
+        super().__init__(DataPreprocessing)
+        self.data_train = mnist_train
+        self.ds_size_list = ds_size_list
+        self.std_list = std_list
+        self.mean_list = mean_list
+        self.category_wt = category_wt
+        self.item = item
+        self.trainX_mixture = None
+        self.trainy_mixture = None
+        self.train_mixture  = None
 
-def train_test_split(data, test_size, state):
-    '''random split or datasets with seed
-    '''
-    np.random.seed(state)
-    n = len(data)
-    n_train = int((1 - test_size) * n)
-    
-    mnist_train, mnist_rest = data[:n_train], data[n_train:]
-    return mnist_train, mnist_rest
+    def __add_random_noise(self, torch_tensor, std, mean=0):
+        """add gaussian noise to original data sample as sample batch effect
 
-def noisy_torch(torch_train_list, torch_rest_list, std_list, state):
-    '''add random noise to training torch
-    '''
-    torch.manual_seed(state)
+        Args:
+            torch_tensor (tensor): input tensor of original data samples
+            std (float): batch-effect standard deviation
+            mean (float, optional): batch-effect mean value. Defaults to 0.
+
+        Returns:
+            tensor: output tensor of original data samples
+        """
+        torch_tensor_output = torch.clone(torch_tensor)
+        sampled_noise = torch.randn(torch_tensor_output.shape)
+        torch_tensor_output += std*sampled_noise + mean
+        return torch_tensor_output
     
+    def __train_test_split(self, state, test_size):
+        """random split or datasets with seed
+
+        Args:
+            state (int): random seed
+            test_size (float): size of test set
+
+        Returns:
+            tuple: train and test sets
+        """
+        np.random.seed(state)
+        n = len(self.data_train)
+        n_train = int((1 - test_size) * n)
+        
+        mnist_train, mnist_rest = self.data_train[:n_train], self.data_train[n_train:]
+        return mnist_train, mnist_rest
     
-    transform  = transforms.Normalize((0.5,), (0.5,))
-    trainX = []
-    trainy = []
-    trainX_rest = []
-    trainy_rest = []
-    
-    for ds, data in enumerate(torch_train_list):
-        trainX_ds = []
-        trainy_ds = []
-        for sample in data:
-            trainX_ds.append(add_random_noise(sample[0], std = std_list[ds]))
-            trainy_ds.append(torch.tensor([sample[1]]))
+    def __noisy_torch(self, state, torch_train_list):
+        """add random noise to training torch
+
+        Args:
+            state (int): random seed
+            torch_train_list (torch list): train torch
+        """
+        torch.manual_seed(state)
+        
+        
+        transform  = transforms.Normalize((0.5,), (0.5,))
+        trainX = []
+        trainy = []
+        
+        for ds, data in enumerate(torch_train_list):
+            trainX_ds = []
+            trainy_ds = []
+            for sample in data:
+                trainX_ds.append(self.__add_random_noise(sample[0], std = self.std_list[ds], mean=self.mean_list[ds]))
+                trainy_ds.append(torch.tensor([sample[1]]))
+                
+            trainX_ds = torch.vstack(trainX_ds)
+            trainy_ds = torch.vstack(trainy_ds)
             
-        trainX_ds = torch.vstack(trainX_ds)
-        trainy_ds = torch.vstack(trainy_ds)
+            trainX_ds = transform(trainX_ds)
+            trainX.append(trainX_ds)
+            trainy.append(trainy_ds)
         
-#         print(trainX_ds.shape)
-        trainX_ds = transform(trainX_ds)
-        trainX.append(trainX_ds)
-        trainy.append(trainy_ds)
+        trainX = torch.vstack(trainX)
+        trainy = torch.vstack(trainy)
+
+        return (trainX, trainy.reshape(-1,))
     
-    for ds, data in enumerate(torch_rest_list):
-        trainX_rest_ds = []
-        trainy_rest_ds = []
-        for sample in data:
-            trainX_rest_ds.append(add_random_noise(sample[0], std = std_list[ds]))
-            trainy_rest_ds.append(torch.tensor([sample[1]]))
+    def __loaders(self, batch_size):
+        import torch
+        mnist_train_mixture = []
+        
+        for n in range(len(self.trainX_mixture)):
+            mnist_train_mixture.append((self.trainX_mixture[n].unsqueeze(dim=0), self.trainy_mixture[n]))
+        
+        train_loader = torch.utils.data.DataLoader(mnist_train_mixture, 
+                                                batch_size=batch_size)
+        
+        return train_loader, mnist_train_mixture
+    
+    def __torch_to_numpy(self):
+        """torch to numpy of train mixture
+
+        Returns:
+            tuple: numpy train X and y 
+        """
+        trainX = []
+        trainy = []
+
+        for sample in self.train_mixture:
+            trainX.append(sample[0].cpu().detach().numpy())
+            trainy.append(sample[1])
+        
+        trainX = np.vstack(trainX)
+        trainy = np.vstack(trainy)
+        
+        return (trainX, trainy.reshape(-1,))
+
+    def generate_data_mixture(self, state, batch_size):
+        """generate data mixture
+
+        Args:
+            state (int): random seed
+            batch_size (int): batch size
+        """
+        torch_train_list = list()
+        size = 0
+        start = [0]
+
+        # load datasets to form data mixture
+        for ds in range(len(self.ds_size_list)):
+            mnist_train_output, mnist_rest_output = self.__train_test_split(state, self.ds_size_list[ds])
+            size += len(mnist_train_output)
+            start.append(size)
+            torch_train_list.append(mnist_train_output)
+        
+        # add batch effect
+        (self.trainX_mixture, self.trainy_mixture) = self.__noisy_torch(state, torch_train_list,)
+        
+        # load train mixture 
+        self.train_mixture = self.__loaders(batch_size)[1]
+        trainX, trainy = self.__torch_to_numpy()
+        
+        obs_X_list = []
+        obs_y_list = []
+        nonobs_X_list = []
+        nonobs_y_list = []
+        
+        for ds in range(len(self.ds_size_list)):
+            trainX_1 = trainX[start[ds]:start[ds+1]]
+            trainy_1 = trainy[start[ds]:start[ds+1]]
+            true_distribution_1 = define_category(trainy_1, self.category_wt[ds], self.item)
+            item_list_1 = create_item_list(trainy_1)
             
-        trainX_rest_ds = torch.vstack(trainX_rest_ds)
-        trainy_rest_ds = torch.vstack(trainy_rest_ds)
+            (trainX_1_selected, trainy_1_selected,\
+            trainX_1_unselected, trainy_1_unselected) = create_biased_sample(trainX_1, trainy_1, 
+                                                                            item_list_1, true_distribution_1)
+            
+            
+            obs_X_list.append(trainX_1_selected)
+            obs_y_list.append(trainy_1_selected)
+            nonobs_X_list.append(trainX_1_unselected)
+            nonobs_y_list.append(trainy_1_unselected)
         
-#         print(trainX_rest_ds.shape)
-        trainX_rest_ds = transform(trainX_rest_ds)
-        trainX_rest.append(trainX_rest_ds)
-        trainy_rest.append(trainy_rest_ds)
-    
-    
-        
-    trainX = torch.vstack(trainX)
-#     print(trainX.shape)
-    trainy = torch.vstack(trainy)
-    trainX_rest = torch.vstack(trainX_rest)
-    trainy_rest = torch.vstack(trainy_rest)
-    
-    
-    
-    
-    return (trainX, 
-            trainX_rest, 
-            trainy.reshape(-1,), 
-            trainy_rest.reshape(-1,))
+        return (obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list)
+
+
+
 
 
 def generate_label(label_array):
@@ -155,90 +250,11 @@ def create_biased_sample(X, y, item_list, true_distribution):
     return(X_selected, y_selected, X_unselected, y_unselected)
 
 
-def torch_to_numpy(torch_train, torch_rest):
-    
-    trainX = []
-    trainy = []
-    trainX_rest = []
-    trainy_rest = []
-    for sample in torch_train:
-        trainX.append(sample[0].cpu().detach().numpy())
-        trainy.append(sample[1])
-    
-    for sample in torch_rest:
-        trainX_rest.append(sample[0].cpu().detach().numpy())
-        trainy_rest.append(sample[1])
-        
-    trainX = np.vstack(trainX)
-    trainy = np.vstack(trainy)
-    trainX_rest = np.vstack(trainX_rest)
-    trainy_rest = np.vstack(trainy_rest)
-    
-    return (trainX, 
-            trainX_rest, 
-            trainy.reshape(-1,), 
-            trainy_rest.reshape(-1,))
-
-def generate_data_mixture(state, mnist_train, ds_size_list, std_list, category_wt, item, batch_size):
-    torch_train_list = []
-    torch_rest_list = []
-    size = 0
-    start = [0]
-    for ds in range(len(ds_size_list)):
-        mnist_train_1, mnist_rest_1 = train_test_split(mnist_train, ds_size_list[ds], 123)
-        size += len(mnist_train_1)
-        start.append(size)
-        torch_train_list.append(mnist_train_1)
-        torch_rest_list.append(mnist_rest_1)
-    
-#     print(len(torch_train_list[0]) + len(torch_train_list[1]) + len(torch_train_list[2]))
-    
-    (trainX_mixture, trainX_rest_mixture, 
-     trainy_mixture, trainy_rest_mixture) = noisy_torch(torch_train_list, torch_rest_list, std_list, state)
-    
-#     print(trainX_mixture.shape)
-    
-    mnist_train_mixture = loaders(trainX_mixture, trainy_mixture, batch_size)[1]
-    mnist_train_rest_mixture = loaders(trainX_rest_mixture, trainy_rest_mixture, batch_size)[1]
-    
-
-    trainX, trainX_rest, trainy, trainy_rest = torch_to_numpy(mnist_train_mixture, mnist_train_rest_mixture)
-#     print(start)
-    obs_X_list = []
-    obs_y_list = []
-    nonobs_X_list = []
-    nonobs_y_list = []
-    
-    for ds in range(len(ds_size_list)):
-        trainX_1 = trainX[start[ds]:start[ds+1]]
-        trainy_1 = trainy[start[ds]:start[ds+1]]
-        true_distribution_1 = define_category(trainy_1, category_wt[ds], item)
-        item_list_1 = create_item_list(trainy_1)
-        
-        (trainX_1_selected, trainy_1_selected,\
-         trainX_1_unselected, trainy_1_unselected) = create_biased_sample(trainX_1, trainy_1, 
-                                                                          item_list_1, true_distribution_1)
-        
-        
-        obs_X_list.append(trainX_1_selected)
-        obs_y_list.append(trainy_1_selected)
-        nonobs_X_list.append(trainX_1_unselected)
-        nonobs_y_list.append(trainy_1_unselected)
-    
-    return (obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list)
 
 
-def loaders(torch_trainX, torch_trainy, batch_size):
-    import torch
-    mnist_train_mixture = []
-    
-    for n in range(len(torch_trainX)):
-        mnist_train_mixture.append((torch_trainX[n].unsqueeze(dim=0), torch_trainy[n]))
-    
-    train_loader = torch.utils.data.DataLoader(mnist_train_mixture, 
-                                               batch_size=batch_size)
-    
-    return train_loader, mnist_train_mixture
+
+
+
     
 
 def create_largest(obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list, ds_num):
@@ -283,7 +299,17 @@ def create_mixture(obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list):
 
 
 def generate_data_mixture_base(state, mnist_train, ds_size_list, std_list, category_wt, item, batch_size):
-    '''generate data mixture that output also the remaining list'''
+    """generate data mixture that output also the remaining list
+
+    Args:
+        state (_type_): _description_
+        mnist_train (_type_): _description_
+        ds_size_list (_type_): _description_
+        std_list (_type_): _description_
+        category_wt (_type_): _description_
+        item (_type_): _description_
+        batch_size (_type_): _description_
+    """
     torch_train_list = []
     torch_rest_list = []
     size = 0
