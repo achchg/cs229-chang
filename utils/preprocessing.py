@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 
-class DataPreprocessing():
+class DataPreprocessing:
     """data preprocessing to generate data mixture
     """
     def __init__(self, mnist_train, ds_size_list, std_list, mean_list, category_wt, item):
@@ -18,7 +18,6 @@ class DataPreprocessing():
             category_wt (_type_): _description_
             item (_type_): _description_
         """
-        super().__init__(DataPreprocessing)
         self.data_train = mnist_train
         self.ds_size_list = ds_size_list
         self.std_list = std_list
@@ -28,6 +27,12 @@ class DataPreprocessing():
         self.trainX_mixture = None
         self.trainy_mixture = None
         self.train_mixture  = None
+        self.trainX_selected = None
+        self.trainy_selected = None
+        self.trainX_unselected = None
+        self.trainy_unselected = None
+
+    #### Batch-effect simulation ####
 
     def __add_random_noise(self, torch_tensor, std, mean=0):
         """add gaussian noise to original data sample as sample batch effect
@@ -44,23 +49,6 @@ class DataPreprocessing():
         sampled_noise = torch.randn(torch_tensor_output.shape)
         torch_tensor_output += std*sampled_noise + mean
         return torch_tensor_output
-    
-    def __train_test_split(self, state, test_size):
-        """random split or datasets with seed
-
-        Args:
-            state (int): random seed
-            test_size (float): size of test set
-
-        Returns:
-            tuple: train and test sets
-        """
-        np.random.seed(state)
-        n = len(self.data_train)
-        n_train = int((1 - test_size) * n)
-        
-        mnist_train, mnist_rest = self.data_train[:n_train], self.data_train[n_train:]
-        return mnist_train, mnist_rest
     
     def __noisy_torch(self, state, torch_train_list):
         """add random noise to training torch
@@ -95,6 +83,25 @@ class DataPreprocessing():
 
         return (trainX, trainy.reshape(-1,))
     
+     #### Data split, load, transform ####
+
+    def __train_test_split(self, state, train_set):
+        """random split or datasets with seed
+
+        Args:
+            state (int): random seed
+            train_set (float): size of train set
+
+        Returns:
+            tuple: train and test sets
+        """
+        np.random.seed(state)
+        n = len(self.data_train)
+        n_train = int((train_set) * n)
+        
+        mnist_train, mnist_rest = self.data_train[:n_train], self.data_train[n_train:]
+        return mnist_train, mnist_rest
+
     def __loaders(self, batch_size):
         import torch
         mnist_train_mixture = []
@@ -125,7 +132,100 @@ class DataPreprocessing():
         
         return (trainX, trainy.reshape(-1,))
 
-    def generate_data_mixture(self, state, batch_size):
+    
+    #### Data label ####
+    def __generate_label(self, label_array):
+        """generate label (y) for training data
+
+
+        Args:
+            label_array (array): training data y per data in the mixture
+
+        Returns:
+            DataFrame: label counts
+        """
+        label = pd.DataFrame(label_array)
+        label.columns = ['item']
+        label['count'] = 1
+        label = label.groupby('item')\
+                    .count()
+        return label
+
+    def __define_category(self, label_array, ds):
+        """define category for later selection bias purpose
+
+        Args:
+            label_array (array): training data y per data in the mixture
+        """
+        category_wt_dictionary = pd.DataFrame.from_dict(self.category_wt[ds]).T.reset_index()
+        category_wt_dictionary.columns = ['category', 'selection_wt']
+        category_wt = category_wt_dictionary.set_index('category')
+
+        item_dictionary = pd.DataFrame.from_dict(self.item).T
+        item_dictionary.columns = ['type', 'category']
+
+        label = self.__generate_label(label_array)
+        true_distribution = label.join(item_dictionary, how = 'left', on = 'item').reset_index()\
+                                .set_index('category')\
+                                .join(category_wt, how = 'left', on = 'category').reset_index()\
+                                .assign(item_pct = lambda x: x['count']/x['count'].sum())
+        return(true_distribution)
+    
+    def __create_item_list(self, label_array):
+        """create item list for later selection bias purpose
+
+        Args:
+            label_array (array): training data y per data in the mixture
+        """
+        array = label_array
+        n = len(array)
+        n_item = len(set(array))
+
+        item_list = []
+        for item in range(n_item):
+            item_element = []
+            for i in range(n):
+                if array[i] == item:
+                    item_element.append(i)
+            item_list.append(item_element)
+            
+        return(item_list)
+
+    def __create_biased_sample(self, X, y, item_list, true_distribution):
+        """_summary_
+
+        Args:
+            X (_type_): _description_
+            y (_type_): _description_
+            item_list (_type_): _description_
+            true_distribution (_type_): _description_
+        """
+        y_selected, X_selected, y_unselected, X_unselected = list(), list(), list(), list()
+        n_item = len(item_list)
+        
+        for item in range(n_item):
+            
+            p = true_distribution['selection_wt'][item]
+            index_item = item_list[item]
+            selected = np.random.binomial(1, p, len(y[index_item]))
+            y_s = y[index_item][selected == 1]
+            X_s = X[index_item][selected == 1]
+            y_uns = y[index_item][selected == 0]
+            X_uns = X[index_item][selected == 0]
+
+            y_selected.append(y_s)
+            X_selected.append(X_s)
+            y_unselected.append(y_uns)
+            X_unselected.append(X_uns)
+
+        X_selected = np.vstack(X_selected)
+        y_selected = np.concatenate(y_selected,axis=0)
+        X_unselected = np.vstack(X_unselected)
+        y_unselected = np.concatenate(y_unselected,axis=0)
+        
+        return(X_selected, y_selected, X_unselected, y_unselected)
+
+    def generate_data_mixture_base(self, state, batch_size):
         """generate data mixture
 
         Args:
@@ -158,96 +258,26 @@ class DataPreprocessing():
         for ds in range(len(self.ds_size_list)):
             trainX_1 = trainX[start[ds]:start[ds+1]]
             trainy_1 = trainy[start[ds]:start[ds+1]]
-            true_distribution_1 = define_category(trainy_1, self.category_wt[ds], self.item)
-            item_list_1 = create_item_list(trainy_1)
+            true_distribution_1 = self.__define_category(trainy_1, ds)
+            item_list_1 = self.__create_item_list(trainy_1)
             
             (trainX_1_selected, trainy_1_selected,\
-            trainX_1_unselected, trainy_1_unselected) = create_biased_sample(trainX_1, trainy_1, 
-                                                                            item_list_1, true_distribution_1)
+            trainX_1_unselected, trainy_1_unselected) = self.__create_biased_sample(trainX_1, trainy_1, item_list_1, true_distribution_1)
             
             
             obs_X_list.append(trainX_1_selected)
             obs_y_list.append(trainy_1_selected)
             nonobs_X_list.append(trainX_1_unselected)
             nonobs_y_list.append(trainy_1_unselected)
+
+        self.trainX_selected = obs_X_list
+        self.trainy_selected = obs_y_list
+        self.trainX_unselected = nonobs_X_list
+        self.trainy_unselected = nonobs_y_list
         
-        return (obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list)
+        return (self.trainX_selected, self.trainy_selected )
 
 
-
-
-
-def generate_label(label_array):
-    ''' generate label for FashionMNIST
-    '''
-    label = pd.DataFrame(label_array)
-    label.columns = ['item']
-    label['count'] = 1
-    label = label.groupby('item')\
-                 .count()
-    return label
-
-def define_category(label_array, category_wt, item):
-    ''' define category for later selection bias purpose
-    '''
-    category_wt_dictionary = pd.DataFrame.from_dict(category_wt).T.reset_index()
-    category_wt_dictionary.columns = ['category', 'selection_wt']
-    category_wt = category_wt_dictionary.set_index('category')
-
-    item_dictionary = pd.DataFrame.from_dict(item).T
-    item_dictionary.columns = ['type', 'category']
-
-    label = generate_label(label_array)
-    true_distribution = label.join(item_dictionary, how = 'left', on = 'item').reset_index()\
-                             .set_index('category')\
-                             .join(category_wt, how = 'left', on = 'category').reset_index()\
-                             .assign(item_pct = lambda x: x['count']/x['count'].sum())
-    return(true_distribution)
-
-
-def create_item_list(y):
-    ''' create item list for later selection bias purpose
-    '''
-    array = y
-    n = len(array)
-    n_item = len(set(array))
-
-    item_list = []
-    for item in range(n_item):
-        item_element = []
-        for i in range(n):
-            if array[i] == item:
-                item_element.append(i)
-        item_list.append(item_element)
-        
-    return(item_list)
-
-def create_biased_sample(X, y, item_list, true_distribution):
-    
-    y_selected, X_selected, y_unselected, X_unselected = list(), list(), list(), list()
-    n_item = len(item_list)
-    
-    for item in range(n_item):
-        
-        p = true_distribution['selection_wt'][item]
-        index_item = item_list[item]
-        selected = np.random.binomial(1, p, len(y[index_item]))
-        y_s = y[index_item][selected == 1]
-        X_s = X[index_item][selected == 1]
-        y_uns = y[index_item][selected == 0]
-        X_uns = X[index_item][selected == 0]
-
-        y_selected.append(y_s)
-        X_selected.append(X_s)
-        y_unselected.append(y_uns)
-        X_unselected.append(X_uns)
-
-    X_selected = np.vstack(X_selected)
-    y_selected = np.concatenate(y_selected,axis=0)
-    X_unselected = np.vstack(X_unselected)
-    y_unselected = np.concatenate(y_unselected,axis=0)
-    
-    return(X_selected, y_selected, X_unselected, y_unselected)
 
 
 
@@ -297,69 +327,6 @@ def create_mixture(obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list):
     
     return torch_trainX_selected, torch_trainy_selected, torch_trainX_unselected, torch_trainy_unselected
 
-
-def generate_data_mixture_base(state, mnist_train, ds_size_list, std_list, category_wt, item, batch_size):
-    """generate data mixture that output also the remaining list
-
-    Args:
-        state (_type_): _description_
-        mnist_train (_type_): _description_
-        ds_size_list (_type_): _description_
-        std_list (_type_): _description_
-        category_wt (_type_): _description_
-        item (_type_): _description_
-        batch_size (_type_): _description_
-    """
-    torch_train_list = []
-    torch_rest_list = []
-    size = 0
-    start = [0]
-    for ds in range(len(ds_size_list)):
-        mnist_train_1, mnist_rest_1 = train_test_split(mnist_train, ds_size_list[ds], 123)
-        size += len(mnist_train_1)
-        start.append(size)
-        torch_train_list.append(mnist_train_1)
-        torch_rest_list.append(mnist_rest_1)
-    
-#     print(len(torch_train_list[0]) + len(torch_train_list[1]) + len(torch_train_list[2]))
-    
-    (trainX_mixture, trainX_rest_mixture, 
-     trainy_mixture, trainy_rest_mixture) = noisy_torch(torch_train_list, torch_rest_list, std_list, state)
-    
-#     print(trainX_mixture.shape)
-    
-    mnist_train_mixture = loaders(trainX_mixture, trainy_mixture, batch_size)[1]
-    mnist_train_rest_mixture = loaders(trainX_rest_mixture, trainy_rest_mixture, batch_size)[1]
-    
-
-    trainX, trainX_rest, trainy, trainy_rest = torch_to_numpy(mnist_train_mixture, mnist_train_rest_mixture)
-#     print(start)
-    obs_X_list = []
-    obs_y_list = []
-    nonobs_X_list = []
-    nonobs_y_list = []
-    rest_X_list = []
-    rest_y_list = []
-    
-    for ds in range(len(ds_size_list)):
-        trainX_1 = trainX[start[ds]:start[ds+1]]
-        trainy_1 = trainy[start[ds]:start[ds+1]]
-        true_distribution_1 = define_category(trainy_1, category_wt[ds], item)
-        item_list_1 = create_item_list(trainy_1)
-        
-        (trainX_1_selected, trainy_1_selected,\
-         trainX_1_unselected, trainy_1_unselected) = create_biased_sample(trainX_1, trainy_1, 
-                                                                          item_list_1, true_distribution_1)
-        
-        
-        obs_X_list.append(trainX_1_selected)
-        obs_y_list.append(trainy_1_selected)
-        nonobs_X_list.append(trainX_1_unselected)
-        nonobs_y_list.append(trainy_1_unselected)
-        rest_X_list.append(trainX_rest)
-        rest_y_list.append(trainy_rest)
-    
-    return (obs_X_list, obs_y_list, nonobs_X_list, nonobs_y_list, rest_X_list, rest_y_list)
 
 
 
